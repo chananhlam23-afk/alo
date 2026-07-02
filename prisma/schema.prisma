@@ -1,0 +1,921 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ─── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserRole {
+  CUSTOMER
+  DRIVER
+  ADMIN
+}
+
+enum VerificationStatus {
+  NONE
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum TripRequestStatus {
+  PENDING
+  MATCHED
+  CANCELLED
+  EXPIRED
+}
+
+enum BookingMode {
+  OPEN_WAIT
+  DIRECT_BOOK
+}
+
+enum TripStatus {
+  PENDING
+  ACTIVE
+  ONGOING
+  COMPLETED
+  CANCELLED
+}
+
+enum LegStatus {
+  WAITING
+  PICKED_UP
+  DROPPED
+  NO_SHOW
+  CANCELLED
+}
+
+enum StopType {
+  PICKUP
+  DROPOFF
+}
+
+enum StopStatus {
+  PENDING
+  DONE
+  SKIPPED
+}
+
+enum MatchStatus {
+  OFFERED
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  REFUNDED
+}
+
+enum PaymentGateway {
+  PAYOS
+  WALLET
+}
+
+enum WithdrawalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  PROCESSING
+  DONE
+}
+
+enum NotificationChannel {
+  EMAIL
+  ZALO
+  IN_APP
+  PUSH
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+enum ReportStatus {
+  OPEN
+  INVESTIGATING
+  RESOLVED
+  DISMISSED
+}
+
+enum CargoStatus {
+  PENDING
+  MATCHED
+  PICKED_UP
+  DELIVERED
+  CANCELLED
+}
+
+enum DocumentType {
+  CCCD_FRONT
+  CCCD_BACK
+  VEHICLE_REGISTRATION
+  DRIVER_LICENSE
+  SELFIE
+}
+
+enum RouteStatus {
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+enum WalletTxType {
+  TRIP_CREDIT
+  WITHDRAWAL
+  ADJUSTMENT
+  RELEASE
+  REFUND
+}
+
+enum VoucherType {
+  PERCENT
+  FIXED_AMOUNT
+  FREE_TRIP
+}
+
+enum VoucherStatus {
+  ACTIVE
+  PAUSED
+  EXPIRED
+  EXHAUSTED
+}
+
+enum BannerPosition {
+  HOME_TOP
+  HOME_BOTTOM
+  TRIP_LISTING
+  BOOKING_CONFIRM
+}
+
+enum EventStatus {
+  DRAFT
+  ACTIVE
+  ENDED
+}
+
+enum PostStatus {
+  DRAFT
+  PUBLISHED
+  ARCHIVED
+}
+
+// ─── Models ───────────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  phone         String?   @unique
+  email         String?   @unique
+  emailVerified DateTime?
+  passwordHash  String?
+  fullName      String?
+  avatarUrl     String?
+  role          UserRole  @default(CUSTOMER)
+  isBlocked     Boolean   @default(false)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  driverProfile   DriverProfile?
+  tripRequests    TripRequest[]
+  cargoSent       CargoRequest[]    @relation("CargoSender")
+  notifications   NotificationLog[]
+  devices         Device[]
+  ratingsGiven    Rating[]          @relation("RatingsGiven")
+  ratingsReceived Rating[]          @relation("RatingsReceived")
+  reportsBy       Report[]          @relation("ReportsBy")
+  reportsAbout    Report[]          @relation("ReportsAbout")
+  refreshTokens   RefreshToken[]
+  accounts        Account[]
+  sessions        Session[]
+  messages        Message[]
+
+  @@index([phone])
+  @@index([email])
+  @@map("users")
+}
+
+// ─── NextAuth ─────────────────────────────────────────────────────────────────
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model EmailOtp {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@map("email_otps")
+}
+
+model RefreshToken {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@map("refresh_tokens")
+}
+
+model OtpRecord {
+  id        String   @id @default(cuid())
+  phone     String
+  codeHash  String
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([phone, used])
+  @@map("otp_records")
+}
+
+model Device {
+  id        String   @id @default(cuid())
+  userId    String
+  fcmToken  String
+  platform  String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, platform])
+  @@map("devices")
+}
+
+model DriverProfile {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  vehicleType        String
+  vehiclePlate       String             @unique
+  seats              Int
+  cccdNumber         String
+  address            String
+  allowCargo         Boolean            @default(false)
+  cargoCapacityKg    Float?
+  verificationStatus VerificationStatus @default(NONE)
+  rejectReason       String?
+  isOnline           Boolean            @default(false)
+  currentLat         Float?
+  currentLng         Float?
+  locationUpdatedAt  DateTime?
+  rating             Float              @default(5.0)
+  totalTrips         Int                @default(0)
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  user        User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  documents   KycDocument[]
+  routes      DriverRoute[]
+  trips       Trip[]
+  wallet      DriverWallet?
+  withdrawals WithdrawalRequest[]
+  matches     TripMatch[]
+  streak      DriverStreak?
+
+  @@index([userId])
+  @@index([verificationStatus])
+  @@map("driver_profiles")
+}
+
+model KycDocument {
+  id              String       @id @default(cuid())
+  driverProfileId String
+  type            DocumentType
+  url             String
+  createdAt       DateTime     @default(now())
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@index([driverProfileId])
+  @@map("kyc_documents")
+}
+
+model DriverRoute {
+  id              String      @id @default(cuid())
+  driverProfileId String
+  originAddress   String
+  destAddress     String
+  originLat       Float
+  originLng       Float
+  destLat         Float
+  destLng         Float
+  polylineEncoded String?
+  departureTime   DateTime
+  availableSeats  Int
+  maxDetourKm     Float       @default(10)
+  allowCargo      Boolean     @default(false)
+  cargoCapacityKg Float?
+  status          RouteStatus @default(ACTIVE)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+  matches       TripMatch[]
+
+  @@index([driverProfileId])
+  @@index([departureTime, status])
+  @@map("driver_routes")
+}
+
+model TripRequest {
+  id              String            @id @default(cuid())
+  customerId      String
+  passengerName   String
+  passengerPhone  String
+  note            String?
+  pickupAddress   String
+  pickupLat       Float
+  pickupLng       Float
+  dropoffAddress  String
+  dropoffLat      Float
+  dropoffLng      Float
+  departureTime   DateTime
+  seats           Int               @default(1)
+  cargoWeightKg   Float?
+  bookingMode     BookingMode       @default(OPEN_WAIT)
+  targetDriverId  String?
+  quotedPrice     Int
+  distanceKm      Float
+  durationMin     Int
+  status          TripRequestStatus @default(PENDING)
+  expiresAt       DateTime
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  customer      User           @relation(fields: [customerId], references: [id])
+  matches       TripMatch[]
+  tripPassenger TripPassenger?
+
+  @@index([customerId, status])
+  @@index([status, expiresAt])
+  @@map("trip_requests")
+}
+
+model TripMatch {
+  id              String      @id @default(cuid())
+  requestId       String
+  driverRouteId   String?
+  driverProfileId String
+  detourKm        Float
+  fareShare       Int
+  driverNet       Int
+  status          MatchStatus @default(OFFERED)
+  offeredAt       DateTime    @default(now())
+  respondedAt     DateTime?
+  expiresAt       DateTime
+
+  request       TripRequest   @relation(fields: [requestId], references: [id])
+  driverRoute   DriverRoute?  @relation(fields: [driverRouteId], references: [id])
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id])
+
+  @@index([driverProfileId, status])
+  @@index([requestId, status])
+  @@map("trip_matches")
+}
+
+model Trip {
+  id               String     @id @default(cuid())
+  driverProfileId  String
+  driverRouteId    String?
+  status           TripStatus @default(PENDING)
+  seatsTotal       Int
+  seatsFilled      Int        @default(0)
+  currentStopIndex Int        @default(0)
+  optimizedAt      DateTime?
+  startedAt        DateTime?
+  completedAt      DateTime?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  driverProfile DriverProfile   @relation(fields: [driverProfileId], references: [id])
+  passengers    TripPassenger[]
+  stops         TripStop[]
+  payments      Payment[]
+  cargos        CargoRequest[]
+  messages      Message[]
+
+  @@index([driverProfileId, status])
+  @@map("trips")
+}
+
+model TripPassenger {
+  id          String    @id @default(cuid())
+  tripId      String
+  requestId   String    @unique
+  customerId  String
+  seats       Int
+  pickupOrder Int?
+  dropoffOrder Int?
+  legStatus   LegStatus @default(WAITING)
+  fareShare   Int
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  trip    Trip        @relation(fields: [tripId], references: [id])
+  request TripRequest @relation(fields: [requestId], references: [id])
+
+  @@index([tripId])
+  @@index([customerId])
+  @@map("trip_passengers")
+}
+
+model TripStop {
+  id          String     @id @default(cuid())
+  tripId      String
+  passengerId String
+  order       Int
+  type        StopType
+  address     String
+  lat         Float
+  lng         Float
+  etaAt       DateTime?
+  status      StopStatus @default(PENDING)
+  doneAt      DateTime?
+  createdAt   DateTime   @default(now())
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([tripId, order])
+  @@map("trip_stops")
+}
+
+model Payment {
+  id           String         @id @default(cuid())
+  tripId       String
+  customerId   String
+  amount       Int
+  gateway      PaymentGateway
+  status       PaymentStatus  @default(PENDING)
+  providerRef  String?
+  paymentUrl   String?
+  paidAt       DateTime?
+  refundedAt   DateTime?
+  refundAmount Int?
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  trip Trip @relation(fields: [tripId], references: [id])
+
+  @@index([tripId])
+  @@index([customerId, status])
+  @@index([providerRef])
+  @@map("payments")
+}
+
+model DriverWallet {
+  id                  String   @id @default(cuid())
+  driverProfileId     String   @unique
+  withdrawableBalance Int      @default(0)
+  pendingBalance      Int      @default(0)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  driverProfile DriverProfile     @relation(fields: [driverProfileId], references: [id])
+  transactions  WalletTransaction[]
+
+  @@map("driver_wallets")
+}
+
+model WalletTransaction {
+  id          String       @id @default(cuid())
+  walletId    String
+  amount      Int
+  type        WalletTxType
+  description String
+  tripId      String?
+  availableAt DateTime?
+  releasedAt  DateTime?
+  createdAt   DateTime     @default(now())
+
+  wallet DriverWallet @relation(fields: [walletId], references: [id])
+
+  @@index([walletId])
+  @@index([availableAt, releasedAt])
+  @@map("wallet_transactions")
+}
+
+model WithdrawalRequest {
+  id              String           @id @default(cuid())
+  driverProfileId String
+  amount          Int
+  bankName        String
+  bankAccountNo   String
+  bankAccountName String
+  status          WithdrawalStatus @default(PENDING)
+  adminNote       String?
+  processedAt     DateTime?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id])
+
+  @@index([driverProfileId])
+  @@index([status])
+  @@map("withdrawal_requests")
+}
+
+model Rating {
+  id         String   @id @default(cuid())
+  tripId     String
+  giverId    String
+  receiverId String
+  stars      Int
+  comment    String?
+  createdAt  DateTime @default(now())
+
+  giver    User @relation("RatingsGiven", fields: [giverId], references: [id])
+  receiver User @relation("RatingsReceived", fields: [receiverId], references: [id])
+
+  @@unique([tripId, giverId])
+  @@index([receiverId])
+  @@map("ratings")
+}
+
+model Report {
+  id             String       @id @default(cuid())
+  reporterId     String
+  reportedUserId String
+  tripId         String?
+  reason         String
+  description    String
+  evidenceUrls   String[]
+  status         ReportStatus @default(OPEN)
+  adminNote      String?
+  resolvedAt     DateTime?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  reporter     User @relation("ReportsBy", fields: [reporterId], references: [id])
+  reportedUser User @relation("ReportsAbout", fields: [reportedUserId], references: [id])
+
+  @@index([status])
+  @@map("reports")
+}
+
+model NotificationLog {
+  id            String              @id @default(cuid())
+  userId        String
+  event         String
+  channel       NotificationChannel
+  status        NotificationStatus  @default(PENDING)
+  providerMsgId String?
+  payload       Json
+  retryCount    Int                 @default(0)
+  createdAt     DateTime            @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([status, retryCount])
+  @@map("notification_logs")
+}
+
+model PricingConfig {
+  id             String   @id @default(cuid())
+  baseFare       Int
+  commissionPct  Float
+  costShareCapPct Float
+  holdDays       Int      @default(3)
+  cargoPricing   Json
+  surgeRules     Json
+  perKmTiers     Json
+  isActive       Boolean  @default(true)
+  updatedBy      String?
+  updatedAt      DateTime @updatedAt
+
+  @@map("pricing_config")
+}
+
+model AreaPricing {
+  id             String   @id @default(cuid())
+  originProvince String
+  destProvince   String
+  pricePerSeat   Int?
+  priceBand      Json?
+  active         Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([originProvince, destProvince])
+  @@map("area_pricing")
+}
+
+model CargoRequest {
+  id              String      @id @default(cuid())
+  senderId        String
+  receiverName    String
+  receiverPhone   String
+  pickupAddress   String
+  pickupLat       Float
+  pickupLng       Float
+  dropoffAddress  String
+  dropoffLat      Float
+  dropoffLng      Float
+  weightKg        Float
+  description     String      @default("")
+  quotedPrice     Int
+  status          CargoStatus @default(PENDING)
+  tripId          String?
+  assignedAt      DateTime?
+  deliveredAt     DateTime?
+  expiresAt       DateTime
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  sender User  @relation("CargoSender", fields: [senderId], references: [id])
+  trip   Trip? @relation(fields: [tripId], references: [id])
+
+  @@index([senderId, status])
+  @@index([status, expiresAt])
+  @@map("cargo_requests")
+}
+
+model DriverStreak {
+  id              String    @id @default(cuid())
+  driverProfileId String    @unique
+  currentStreak   Int       @default(0)
+  longestStreak   Int       @default(0)
+  lastTripDate    DateTime?
+  bonusEarnedTotal Int      @default(0)
+  updatedAt       DateTime  @updatedAt
+
+  driverProfile DriverProfile @relation(fields: [driverProfileId], references: [id], onDelete: Cascade)
+
+  @@map("driver_streaks")
+}
+
+model CargoConfig {
+  id          String   @id @default(cuid())
+  enabled     Boolean  @default(true)
+  maxWeightKg Float    @default(200)
+  pricePerKg  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("cargo_config")
+}
+
+model Voucher {
+  id            String        @id @default(cuid())
+  code          String        @unique
+  name          String
+  description   String?
+  type          VoucherType
+  value         Float
+  minOrderValue Int           @default(0)
+  maxDiscount   Int?
+  usageLimit    Int?
+  usedCount     Int           @default(0)
+  userLimit     Int           @default(1)
+  startsAt      DateTime
+  expiresAt     DateTime
+  status        VoucherStatus @default(ACTIVE)
+  targetRole    UserRole?
+  // Bộ điều kiện nâng cao (đối tượng, phạm vi, giới hạn, ngân sách…) — xem src/lib/vouchers/conditions.ts
+  conditions    Json          @default("{}")
+  createdBy     String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  usages VoucherUsage[]
+
+  @@index([code])
+  @@index([status, expiresAt])
+  @@map("vouchers")
+}
+
+model VoucherUsage {
+  id        String   @id @default(cuid())
+  voucherId String
+  userId    String
+  tripId    String?
+  requestId String?  @unique // liên kết yêu cầu chuyến để hoàn lượt khi hủy + chống ghi trùng
+  discount  Int
+  usedAt    DateTime @default(now())
+
+  voucher Voucher @relation(fields: [voucherId], references: [id])
+
+  @@index([voucherId, userId])
+  @@index([userId])
+  @@map("voucher_usages")
+}
+
+model Banner {
+  id         String         @id @default(cuid())
+  title      String
+  imageUrl   String
+  linkUrl    String?
+  position   BannerPosition
+  sortOrder  Int            @default(0)
+  active     Boolean        @default(true)
+  startsAt   DateTime?
+  expiresAt  DateTime?
+  clickCount Int            @default(0)
+  viewCount  Int            @default(0)
+  createdBy  String
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@index([position, active])
+  @@map("banners")
+}
+
+model PromotionEvent {
+  id             String      @id @default(cuid())
+  name           String
+  description    String
+  imageUrl       String?
+  type           String
+  config         Json
+  targetAudience String?
+  status         EventStatus @default(DRAFT)
+  startsAt       DateTime
+  endsAt         DateTime
+  budget         Int?
+  usedBudget     Int         @default(0)
+  createdBy      String
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+
+  @@index([status, startsAt])
+  @@map("promotion_events")
+}
+
+model BlogPost {
+  id         String     @id @default(cuid())
+  slug       String     @unique
+  title      String
+  summary    String
+  content    String     @db.Text
+  coverImage String?
+  tags       String[]
+  category   String     @default("TIN_TUC")
+  status     PostStatus @default(DRAFT)
+  seoTitle   String?
+  seoDesc    String?
+  readTime   Int        @default(3)
+  viewCount  Int        @default(0)
+  authorId   String
+  publishedAt DateTime?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([slug])
+  @@map("blog_posts")
+}
+
+model SecurityEvent {
+  id        String   @id @default(cuid())
+  type      String
+  ip        String
+  userId    String?
+  path      String
+  userAgent String?
+  metadata  Json?
+  severity  String   @default("LOW")
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@index([type, createdAt])
+  @@index([userId, createdAt])
+  @@map("security_events")
+}
+
+model IpBlock {
+  id        String    @id @default(cuid())
+  ip        String    @unique
+  reason    String
+  blockedAt DateTime  @default(now())
+  expiresAt DateTime?
+  blockedBy String?
+
+  @@index([ip])
+  @@map("ip_blocks")
+}
+
+model LandingConfig {
+  id String @id @default(cuid())
+  key String @unique @default("main")
+
+  // Theme / design tokens (colors, gradient, radius) — see types/landing.ts ThemeConfig
+  theme Json @default("{}")
+
+  // Navbar
+  navBrand String @default("Thuận Chuyến")
+  navItems Json   @default("[]")
+
+  // Hero
+  heroBadge     String @default("Thuận đường · Thuận chuyến · Thuận người")
+  heroTitle     String @default("Mỗi cuốc xe —")
+  heroHighlight String @default("một câu chuyện người")
+  heroSubtitle  String @default("Tài xế không còn trống xe về. Hành khách không còn trả giá cao.\nThuận Chuyến kết nối họ lại — bằng AI, bằng trái tim.")
+  heroFeatures  Json   @default("[]")
+
+  // Social proof row
+  socialVisible Boolean @default(true)
+  socialTitle   String  @default("Hàng ngàn tài xế & hành khách tin dùng")
+  socialSub     String  @default("Tham gia cộng đồng Thuận Chuyến ngay hôm nay")
+
+  // Below-fold sections (ordered JSON array)
+  sections Json @default("[]")
+
+  // Footer
+  footerGroups Json   @default("[]")
+  footerCopy   String @default("© 2025 Thuận Chuyến. All rights reserved.")
+
+  updatedBy String?
+  updatedAt DateTime @updatedAt
+  createdAt DateTime @default(now())
+
+  @@map("landing_configs")
+}
+
+model LoginAttempt {
+  id        String   @id @default(cuid())
+  ip        String
+  email     String
+  success   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([ip, createdAt])
+  @@index([email, createdAt])
+  @@map("login_attempts")
+}
+
+model Message {
+  id        String    @id @default(cuid())
+  tripId    String
+  senderId  String
+  type      String    @default("TEXT")
+  content   String
+  metadata  Json?
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  trip   Trip @relation(fields: [tripId], references: [id])
+  sender User @relation(fields: [senderId], references: [id])
+
+  @@index([tripId, createdAt])
+  @@index([senderId])
+  @@map("messages")
+}
