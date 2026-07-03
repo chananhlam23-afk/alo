@@ -1,9 +1,12 @@
 "use client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useSession } from "next-auth/react";
 import { useAuth } from "@/hooks/useAuth";
 import { api } from "@/lib/api/client";
 import { PhoneIcon } from "@/components/ui/Icons";
+
+// Nhớ lựa chọn "Để sau" trong phiên hiện tại (reload không hỏi lại; mở lại app/phiên mới sẽ hỏi lại).
+const SKIP_KEY = "pg_phone_skipped";
 
 /**
  * Cổng onboarding số điện thoại.
@@ -22,9 +25,15 @@ export default function PhoneGate() {
   const [phone, setPhone]   = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState("");
+  const [skipped, setSkipped] = useState(false);
 
-  // Chỉ chặn khi đã đăng nhập và CHƯA liên kết số điện thoại.
-  if (loading || !user || user.phone) return null;
+  // Khôi phục lựa chọn "Để sau" sau khi reload trang.
+  useEffect(() => {
+    try { if (sessionStorage.getItem(SKIP_KEY) === "1") setSkipped(true); } catch { /* ignore */ }
+  }, []);
+
+  // Chỉ chặn khi đã đăng nhập, CHƯA liên kết SĐT, và chưa bấm "Để sau".
+  if (loading || !user || user.phone || skipped) return null;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,6 +52,11 @@ export default function PhoneGate() {
       setError((err as Error).message);
       setSaving(false);
     }
+  };
+
+  const skip = () => {
+    try { sessionStorage.setItem(SKIP_KEY, "1"); } catch { /* ignore */ }
+    setSkipped(true);
   };
 
   return (
@@ -96,6 +110,18 @@ export default function PhoneGate() {
             </div>
             <button type="submit" disabled={saving} className="btn btn-primary" style={{ width: "100%", marginTop: 4 }}>
               {saving ? "Đang lưu..." : "Xác nhận & tiếp tục"}
+            </button>
+            <button
+              type="button"
+              onClick={skip}
+              disabled={saving}
+              style={{
+                width: "100%", marginTop: 10, padding: "8px 0",
+                background: "none", border: "none", cursor: "pointer",
+                color: "var(--text-muted)", fontSize: 13, textDecoration: "underline",
+              }}
+            >
+              Để sau
             </button>
           </form>
         </div>
