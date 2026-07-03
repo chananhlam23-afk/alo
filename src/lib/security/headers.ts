@@ -10,9 +10,11 @@ const isProd = process.env.NODE_ENV === "production";
 function buildCsp(): string {
   const scriptSrc = [
     "'self'",
-    // Allow inline scripts only in dev (Next.js HMR needs it)
-    isProd ? "" : "'unsafe-inline'",
-    // next/script and webpack runtime need eval in dev
+    // Next.js App Router chèn inline bootstrap/hydration script ở MỌI môi trường
+    // (kể cả production). Thiếu 'unsafe-inline' → CSP chặn → React không hydrate
+    // → trang đứng ở "Đang tải…". Vì vậy phải cho phép inline script cả prod.
+    "'unsafe-inline'",
+    // eval chỉ cần cho HMR/webpack runtime lúc dev.
     isProd ? "" : "'unsafe-eval'",
   ]
     .filter(Boolean)
