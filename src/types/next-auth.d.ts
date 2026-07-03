@@ -21,5 +21,7 @@ declare module "next-auth/jwt" {
     role?: string;
     blocked?: boolean;
     phone?: string | null;
+    /** epoch ms lần cuối role/phone được đọc từ DB (để refresh định kỳ, không query mỗi request) */
+    roleCheckedAt?: number;
   }
 }

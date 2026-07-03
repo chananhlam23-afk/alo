@@ -147,18 +147,26 @@ export const authOptions: NextAuthOptions = {
 
   callbacks: {
     async jwt({ token, user }) {
-      if (user) {
-        token.userId = user.id;
-      }
-      // Luôn refresh role từ DB để đảm bảo tính chính xác
-      if (token.userId) {
+      // Refresh role/phone/blocked từ DB CHỈ khi:
+      //  - vừa đăng nhập (`user` có giá trị), hoặc
+      //  - đã quá 5 phút kể từ lần đọc DB gần nhất.
+      // Các request còn lại dùng token có sẵn → KHÔNG đụng DB → session tức thì,
+      // không phụ thuộc Neon phải luôn tỉnh (tránh kẹt "Đang tải…").
+      const REFRESH_MS = 5 * 60 * 1000;
+      const now = Date.now();
+
+      if (user) token.userId = user.id;
+
+      const stale = now - (token.roleCheckedAt ?? 0) > REFRESH_MS;
+      if (token.userId && (user || stale)) {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.userId as string },
           select: { role: true, isBlocked: true, phone: true },
         });
-        token.role  = dbUser?.role  ?? "CUSTOMER";
-        token.phone = dbUser?.phone ?? null;
-        if (dbUser?.isBlocked) token.blocked = true;
+        token.role    = dbUser?.role  ?? "CUSTOMER";
+        token.phone   = dbUser?.phone ?? null;
+        token.blocked = dbUser?.isBlocked ? true : undefined;
+        token.roleCheckedAt = now;
       }
       return token;
     },
