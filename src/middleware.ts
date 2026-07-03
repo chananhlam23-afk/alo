@@ -148,7 +148,7 @@ export async function middleware(req: NextRequest) {
 
   // 5. Auth routing (original logic — unchanged)
 
-  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET });
+  const token = await getToken({ req, secret: process.env.NEXTAUTH_SECRET, secureCookie: process.env.NODE_ENV === "production" });
 
   // /admin/* chỉ dành cho ADMIN
   if (pathname.startsWith("/admin")) {
